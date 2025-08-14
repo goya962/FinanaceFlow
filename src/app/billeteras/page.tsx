@@ -45,30 +45,27 @@ import { Input } from "@/components/ui/input";
 import { Wallet, PlusCircle, Edit, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { DigitalWallet } from "@/types";
+import { getWallets, saveWallet, deleteWallet } from "@/lib/actions";
+
 
 const walletSchema = z.object({
+  id: z.string().optional(),
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres."),
 });
-
-const initialWallets: DigitalWallet[] = [
-  { id: "1", name: "Mercado Pago" },
-];
 
 export default function BilleterasPage() {
   const [wallets, setWallets] = useState<DigitalWallet[]>([]);
   const [isDialogOpen, setDialogOpen] = useState(false);
   const [editingWallet, setEditingWallet] = useState<DigitalWallet | null>(null);
   const { toast } = useToast();
+  
+  const fetchWallets = async () => {
+      const fetchedWallets = await getWallets();
+      setWallets(fetchedWallets);
+    }
 
   useEffect(() => {
-    if (localStorage.getItem("wallets_preloaded") !== "true") {
-      setWallets(initialWallets);
-      localStorage.setItem("wallets_preloaded", "true");
-    } else {
-        const stored = localStorage.getItem("wallets");
-        if(stored) setWallets(JSON.parse(stored));
-        else setWallets(initialWallets);
-    }
+    fetchWallets();
   }, []);
 
   const form = useForm<z.infer<typeof walletSchema>>({
@@ -78,36 +75,32 @@ export default function BilleterasPage() {
 
   useEffect(() => {
     if (editingWallet) {
-      form.reset({ name: editingWallet.name });
+      form.reset({ id: editingWallet.id, name: editingWallet.name });
     } else {
-      form.reset({ name: "" });
+      form.reset({ id: undefined, name: "" });
     }
-  }, [editingWallet, form]);
+  }, [editingWallet, form, isDialogOpen]);
   
-  const onSubmit = (values: z.infer<typeof walletSchema>) => {
-    if (editingWallet) {
-      const updatedWallets = wallets.map((w) =>
-        w.id === editingWallet.id ? { ...w, ...values } : w
-      );
-      setWallets(updatedWallets);
-      localStorage.setItem("wallets", JSON.stringify(updatedWallets));
-      toast({ title: "Billetera actualizada" });
+  const handleFormSubmit = async (values: z.infer<typeof walletSchema>) => {
+    const result = await saveWallet(values);
+    if(result.success) {
+      toast({ title: editingWallet ? "Billetera actualizada" : "Billetera agregada" });
+      fetchWallets();
+      setDialogOpen(false);
+      setEditingWallet(null);
     } else {
-      const newWallet: DigitalWallet = { id: new Date().toISOString(), ...values };
-      const updatedWallets = [...wallets, newWallet];
-      setWallets(updatedWallets);
-      localStorage.setItem("wallets", JSON.stringify(updatedWallets));
-      toast({ title: "Billetera agregada" });
+      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-    setEditingWallet(null);
-    setDialogOpen(false);
   };
   
-  const handleDelete = (id: string) => {
-    const updatedWallets = wallets.filter(w => w.id !== id);
-    setWallets(updatedWallets);
-    localStorage.setItem("wallets", JSON.stringify(updatedWallets));
-    toast({ title: "Billetera eliminada", variant: "destructive" });
+  const handleDelete = async (id: string) => {
+    const result = await deleteWallet(id);
+    if (result.success) {
+        toast({ title: "Billetera eliminada", variant: "destructive" });
+        fetchWallets();
+    } else {
+         toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
   }
 
   return (
@@ -135,7 +128,7 @@ export default function BilleterasPage() {
                 <DialogTitle>{editingWallet ? "Editar" : "Agregar"} Billetera</DialogTitle>
               </DialogHeader>
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4">
                   <FormField
                     control={form.control}
                     name="name"
@@ -150,7 +143,7 @@ export default function BilleterasPage() {
                     )}
                   />
                   <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+                    <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
                     <Button type="submit">Guardar</Button>
                   </DialogFooter>
                 </form>

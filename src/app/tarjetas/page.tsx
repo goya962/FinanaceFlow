@@ -47,22 +47,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CreditCard, PlusCircle, Edit, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { CreditCard as CardType, Bank } from "@/types";
+import { getCards, saveCard, deleteCard, getBanks } from "@/lib/actions";
 
 const cardSchema = z.object({
+  id: z.string().optional(),
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres."),
   bank: z.string().min(2, "El banco es requerido."),
 });
-
-const initialCards: CardType[] = [
-  { id: "1", name: "Visa", bank: "Ciudad" },
-  { id: "2", name: "Mastercard", bank: "ICBC" },
-];
-
-const initialBanks: Bank[] = [
-  { id: "1", name: "Ciudad" },
-  { id: "2", name: "Brubank" },
-  { id: "3", name: "ICBC" },
-];
 
 export default function TarjetasPage() {
   const [cards, setCards] = useState<CardType[]>([]);
@@ -71,20 +62,19 @@ export default function TarjetasPage() {
   const [editingCard, setEditingCard] = useState<CardType | null>(null);
   const { toast } = useToast();
 
+  const fetchCards = async () => {
+    const fetchedCards = await getCards();
+    setCards(fetchedCards);
+  };
+  
+  const fetchBanks = async () => {
+    const fetchedBanks = await getBanks();
+    setBanks(fetchedBanks);
+  }
+
   useEffect(() => {
-    // Preload cards
-    if (localStorage.getItem("cards_preloaded") !== "true") {
-      setCards(initialCards);
-      localStorage.setItem("cards_preloaded", "true");
-      localStorage.setItem("cards", JSON.stringify(initialCards));
-    } else {
-        const stored = localStorage.getItem("cards");
-        if(stored) setCards(JSON.parse(stored));
-        else setCards(initialCards);
-    }
-    // Load banks
-    const storedBanks = localStorage.getItem("banks");
-    setBanks(storedBanks ? JSON.parse(storedBanks) : initialBanks);
+    fetchCards();
+    fetchBanks();
   }, []);
 
   const form = useForm<z.infer<typeof cardSchema>>({
@@ -94,37 +84,32 @@ export default function TarjetasPage() {
   
   useEffect(() => {
     if (editingCard) {
-      form.reset({ name: editingCard.name, bank: editingCard.bank });
+      form.reset({ id: editingCard.id, name: editingCard.name, bank: editingCard.bank });
     } else {
-      form.reset({ name: "", bank: "" });
+      form.reset({ id: undefined, name: "", bank: "" });
     }
-  }, [editingCard, form]);
+  }, [editingCard, form, isDialogOpen]);
 
-  const onSubmit = (values: z.infer<typeof cardSchema>) => {
-    if (editingCard) {
-      const updatedCards = cards.map((c) =>
-        c.id === editingCard.id ? { ...c, ...values } : c
-      );
-      setCards(updatedCards);
-      localStorage.setItem("cards", JSON.stringify(updatedCards));
-      toast({ title: "Tarjeta actualizada" });
+  const onSubmit = async (values: z.infer<typeof cardSchema>) => {
+    const result = await saveCard(values);
+    if(result.success){
+      toast({ title: editingCard ? "Tarjeta actualizada" : "Tarjeta agregada" });
+      fetchCards();
+      setDialogOpen(false);
+      setEditingCard(null);
     } else {
-      const newCard: CardType = { id: new Date().toISOString(), ...values };
-      const updatedCards = [...cards, newCard];
-      setCards(updatedCards);
-      localStorage.setItem("cards", JSON.stringify(updatedCards));
-      toast({ title: "Tarjeta agregada" });
+      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-    setEditingCard(null);
-    setDialogOpen(false);
-    form.reset({ name: "", bank: "" });
   };
   
-  const handleDelete = (id: string) => {
-    const updatedCards = cards.filter(c => c.id !== id);
-    setCards(updatedCards);
-    localStorage.setItem("cards", JSON.stringify(updatedCards));
-    toast({ title: "Tarjeta eliminada", variant: "destructive" });
+  const handleDelete = async (id: string) => {
+    const result = await deleteCard(id);
+    if(result.success) {
+        toast({ title: "Tarjeta eliminada", variant: "destructive" });
+        fetchCards();
+    } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
   }
 
   return (
@@ -140,7 +125,7 @@ export default function TarjetasPage() {
               </CardDescription>
             </div>
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {if(!open) {setEditingCard(null); form.reset({ name: "", bank: "" });}; setDialogOpen(open)}}>
+          <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => { setEditingCard(null); form.reset({ name: "", bank: ""}); setDialogOpen(true); }}>
                 <PlusCircle className="mr-2 h-4 w-4" />
@@ -159,7 +144,7 @@ export default function TarjetasPage() {
                    <FormField control={form.control} name="bank" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Banco Emisor</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Selecciona un banco" />
@@ -177,7 +162,7 @@ export default function TarjetasPage() {
                       </FormItem>
                   )} />
                   <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+                    <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
                     <Button type="submit">Guardar</Button>
                   </DialogFooter>
                 </form>

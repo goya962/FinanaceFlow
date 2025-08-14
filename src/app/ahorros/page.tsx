@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { PiggyBank, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getSavingsGoal, saveSavingsGoal } from "@/lib/actions";
 
 const savingsSchema = z.object({
   goal: z.preprocess(
@@ -20,7 +21,7 @@ const savingsSchema = z.object({
 
 export default function AhorrosPage() {
   const { toast } = useToast();
-  const [currentGoal, setCurrentGoal] = useState(20); // Mock current goal
+  const [currentGoal, setCurrentGoal] = useState(0); 
 
   const form = useForm<z.infer<typeof savingsSchema>>({
     resolver: zodResolver(savingsSchema),
@@ -29,14 +30,30 @@ export default function AhorrosPage() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof savingsSchema>) {
-    console.log("Saving goal:", values.goal);
-    // Here you would call your action to save to Firestore
-    setCurrentGoal(values.goal);
-    toast({
-      title: "Objetivo de Ahorro Actualizado",
-      description: `Tu nuevo objetivo es ahorrar el ${values.goal}% de tus ingresos.`,
-    });
+  useEffect(() => {
+    async function fetchGoal() {
+      const goal = await getSavingsGoal();
+      setCurrentGoal(goal);
+      form.setValue("goal", goal);
+    }
+    fetchGoal();
+  }, [form]);
+
+  async function onSubmit(values: z.infer<typeof savingsSchema>) {
+    const result = await saveSavingsGoal(values.goal);
+     if (result.success) {
+      setCurrentGoal(values.goal);
+      toast({
+        title: "Objetivo de Ahorro Actualizado",
+        description: `Tu nuevo objetivo es ahorrar el ${values.goal}% de tus ingresos.`,
+      });
+    } else {
+      toast({
+        title: "Error",
+        description: result.message,
+        variant: "destructive",
+      });
+    }
   }
 
   return (

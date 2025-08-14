@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useFormState, useFormStatus } from 'react-dom';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -53,6 +54,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Landmark, PlusCircle, Edit, Trash2, ShieldQuestion } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Bank, Account } from "@/types";
+import { getBanks, saveBank, deleteBank, saveAccount, deleteAccount } from '@/lib/actions';
 
 const bankSchema = z.object({
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres."),
@@ -66,27 +68,6 @@ const accountSchema = z.object({
 });
 
 
-const initialBanks: Bank[] = [
-  { 
-    id: "0", 
-    name: "Ahorros", 
-    isDeletable: false, 
-    accounts: [
-        { id: "acc0", name: "Ahorros en Pesos", currency: "ARS", cbu: "0000000000000000000000", alias: "ahorros.app.ars" }
-    ] 
-  },
-  { 
-    id: "1", 
-    name: "Ciudad", 
-    isDeletable: true,
-    accounts: [
-        { id: "acc1ars", name: "Caja de Ahorro ARS", currency: "ARS", cbu: "1111111111111111111111", alias: "ciudad.app.ars" },
-        { id: "acc1usd", name: "Caja de Ahorro USD", currency: "USD", cbu: "1111111111111111111122", alias: "ciudad.app.usd" }
-    ]
-  },
-];
-
-
 export default function BancosPage() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [isBankDialogOpen, setBankDialogOpen] = useState(false);
@@ -97,14 +78,11 @@ export default function BancosPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    // In a real app, you would fetch from Firestore.
-    const stored = localStorage.getItem("banks");
-    if (stored) {
-      setBanks(JSON.parse(stored));
-    } else {
-      setBanks(initialBanks);
-      localStorage.setItem("banks", JSON.stringify(initialBanks));
+    async function fetchBanks() {
+      const fetchedBanks = await getBanks();
+      setBanks(fetchedBanks);
     }
+    fetchBanks();
   }, []);
 
   const bankForm = useForm<z.infer<typeof bankSchema>>({
@@ -133,74 +111,57 @@ export default function BancosPage() {
     }
   }, [editingAccount, accountForm, isAccountDialogOpen]);
 
-  const handleBankSubmit = (values: z.infer<typeof bankSchema>) => {
-    let updatedBanks;
-    if (editingBank) {
-      updatedBanks = banks.map((b) =>
-        b.id === editingBank.id ? { ...b, name: values.name } : b
-      );
-      toast({ title: "Banco actualizado" });
+  const handleBankFormSubmit = async (formData: FormData) => {
+    const result = await saveBank(formData);
+    if (result?.success) {
+        toast({ title: editingBank ? "Banco actualizado" : "Banco agregado" });
+        const fetchedBanks = await getBanks();
+        setBanks(fetchedBanks);
+        setBankDialogOpen(false);
+        setEditingBank(null);
     } else {
-      const newBank: Bank = { id: new Date().toISOString(), name: values.name, accounts: [], isDeletable: true };
-      updatedBanks = [...banks, newBank];
-      toast({ title: "Banco agregado" });
+        // Handle errors, maybe show a toast
+        toast({ title: "Error", description: result?.message, variant: "destructive" });
     }
-    setBanks(updatedBanks);
-    localStorage.setItem("banks", JSON.stringify(updatedBanks));
-    setEditingBank(null);
-    setBankDialogOpen(false);
   };
   
-  const handleAccountSubmit = (values: z.infer<typeof accountSchema>) => {
+  const handleAccountFormSubmit = async (formData: FormData) => {
     if (!selectedBankId) return;
-
-    const updatedBanks = banks.map(bank => {
-      if (bank.id === selectedBankId) {
-        const currentAccounts = bank.accounts || [];
-        let updatedAccounts;
-        if (editingAccount) {
-          updatedAccounts = currentAccounts.map(acc => acc.id === editingAccount.id ? { ...acc, ...values } : acc);
-          toast({ title: "Cuenta actualizada" });
-        } else {
-          const newAccount: Account = { id: new Date().toISOString(), ...values };
-          updatedAccounts = [...currentAccounts, newAccount];
-           toast({ title: "Cuenta agregada" });
-        }
-        return { ...bank, accounts: updatedAccounts };
-      }
-      return bank;
-    });
-
-    setBanks(updatedBanks);
-    localStorage.setItem("banks", JSON.stringify(updatedBanks));
-    setEditingAccount(null);
-    setAccountDialogOpen(false);
-    setSelectedBankId(null);
+    formData.append('bankId', selectedBankId);
+    if (editingAccount) {
+      formData.append('id', editingAccount.id);
+    }
+    
+    const result = await saveAccount(formData);
+     if (result?.success) {
+        toast({ title: editingAccount ? "Cuenta actualizada" : "Cuenta agregada" });
+        const fetchedBanks = await getBanks();
+        setBanks(fetchedBanks);
+        setAccountDialogOpen(false);
+        setEditingAccount(null);
+        setSelectedBankId(null);
+    } else {
+        toast({ title: "Error", description: result?.message, variant: "destructive" });
+    }
   };
 
-  const handleBankDelete = (id: string) => {
+  const handleBankDelete = async (id: string) => {
     const bankToDelete = banks.find(b => b.id === id);
     if (bankToDelete && !bankToDelete.isDeletable) {
       toast({ title: "Acción no permitida", description: "Esta cuenta bancaria no se puede eliminar.", variant: "destructive" });
       return;
     }
-    const updatedBanks = banks.filter(b => b.id !== id);
-    setBanks(updatedBanks);
-    localStorage.setItem("banks", JSON.stringify(updatedBanks));
+    await deleteBank(id);
     toast({ title: "Banco eliminado", variant: "destructive" });
+    const fetchedBanks = await getBanks();
+    setBanks(fetchedBanks);
   };
   
-  const handleAccountDelete = (bankId: string, accountId: string) => {
-    const updatedBanks = banks.map(bank => {
-        if (bank.id === bankId) {
-            const updatedAccounts = bank.accounts.filter(acc => acc.id !== accountId);
-            return {...bank, accounts: updatedAccounts};
-        }
-        return bank;
-    });
-    setBanks(updatedBanks);
-    localStorage.setItem("banks", JSON.stringify(updatedBanks));
+  const handleAccountDelete = async (accountId: string) => {
+    await deleteAccount(accountId);
     toast({ title: "Cuenta eliminada", variant: "destructive" });
+    const fetchedBanks = await getBanks();
+    setBanks(fetchedBanks);
   }
 
   const openAccountDialog = (bankId: string, account: Account | null) => {
@@ -224,31 +185,31 @@ export default function BancosPage() {
             <DialogHeader>
             <DialogTitle>{editingAccount ? "Editar" : "Agregar"} Cuenta</DialogTitle>
             </DialogHeader>
-            <Form {...accountForm}>
-            <form onSubmit={accountForm.handleSubmit(handleAccountSubmit)} className="space-y-4">
-                <FormField control={accountForm.control} name="name" render={({ field }) => (
-                    <FormItem><FormLabel>Nombre de la Cuenta</FormLabel><FormControl><Input placeholder="Ej: Caja de Ahorro" {...field} /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={accountForm.control} name="currency" render={({ field }) => (
-                    <FormItem><FormLabel>Moneda</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                            <FormControl><SelectTrigger><SelectValue placeholder="Selecciona una moneda" /></SelectTrigger></FormControl>
-                            <SelectContent><SelectItem value="ARS">Pesos (ARS)</SelectItem><SelectItem value="USD">Dólares (USD)</SelectItem></SelectContent>
-                        </Select>
-                    <FormMessage /></FormItem>
-                )} />
-                <FormField control={accountForm.control} name="cbu" render={({ field }) => (
-                    <FormItem><FormLabel>CBU</FormLabel><FormControl><Input placeholder="0000..." {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={accountForm.control} name="alias" render={({ field }) => (
-                    <FormItem><FormLabel>Alias</FormLabel><FormControl><Input placeholder="mi.alias" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>
-                )} />
+            <form action={handleAccountFormSubmit} className="space-y-4">
+                 <Form {...accountForm}>
+                    <FormField control={accountForm.control} name="name" render={({ field }) => (
+                        <FormItem><FormLabel>Nombre de la Cuenta</FormLabel><FormControl><Input placeholder="Ej: Caja de Ahorro" {...field} name="name" /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={accountForm.control} name="currency" render={({ field }) => (
+                        <FormItem><FormLabel>Moneda</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value} name="currency">
+                                <FormControl><SelectTrigger><SelectValue placeholder="Selecciona una moneda" /></SelectTrigger></FormControl>
+                                <SelectContent><SelectItem value="ARS">Pesos (ARS)</SelectItem><SelectItem value="USD">Dólares (USD)</SelectItem></SelectContent>
+                            </Select>
+                        <FormMessage /></FormItem>
+                    )} />
+                    <FormField control={accountForm.control} name="cbu" render={({ field }) => (
+                        <FormItem><FormLabel>CBU</FormLabel><FormControl><Input placeholder="0000..." {...field} value={field.value || ''} name="cbu"/></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={accountForm.control} name="alias" render={({ field }) => (
+                        <FormItem><FormLabel>Alias</FormLabel><FormControl><Input placeholder="mi.alias" {...field} value={field.value || ''} name="alias" /></FormControl><FormMessage /></FormItem>
+                    )} />
+                 </Form>
                 <DialogFooter>
                     <Button variant="outline" type="button" onClick={closeAccountDialog}>Cancelar</Button>
                     <Button type="submit">Guardar</Button>
                 </DialogFooter>
             </form>
-            </Form>
         </DialogContent>
       </Dialog>
 
@@ -272,17 +233,18 @@ export default function BancosPage() {
               <DialogHeader>
                 <DialogTitle>{editingBank ? "Editar" : "Agregar"} Banco</DialogTitle>
               </DialogHeader>
-              <Form {...bankForm}>
-                <form onSubmit={bankForm.handleSubmit(handleBankSubmit)} className="space-y-4">
-                  <FormField control={bankForm.control} name="name" render={({ field }) => (
-                      <FormItem><FormLabel>Nombre del Banco</FormLabel><FormControl><Input placeholder="Ej: Banco Nación" {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
-                  <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+               <form action={handleBankFormSubmit}>
+                    {editingBank && <input type="hidden" name="id" value={editingBank.id} />}
+                    <Form {...bankForm}>
+                      <FormField control={bankForm.control} name="name" render={({ field }) => (
+                          <FormItem><FormLabel>Nombre del Banco</FormLabel><FormControl><Input placeholder="Ej: Banco Nación" {...field} name="name"/></FormControl><FormMessage /></FormItem>
+                      )} />
+                    </Form>
+                  <DialogFooter className="mt-4">
+                    <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
                     <Button type="submit">Guardar</Button>
                   </DialogFooter>
                 </form>
-              </Form>
             </DialogContent>
           </Dialog>
         </CardHeader>
@@ -345,7 +307,7 @@ export default function BancosPage() {
                                             <AlertDialogTrigger asChild><Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-destructive" /></Button></AlertDialogTrigger>
                                             <AlertDialogContent>
                                                 <AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esto eliminará la cuenta permanentemente.</AlertDialogDescription></AlertDialogHeader>
-                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleAccountDelete(bank.id, account.id)}>Eliminar</AlertDialogAction></AlertDialogFooter>
+                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleAccountDelete(account.id)}>Eliminar</AlertDialogAction></AlertDialogFooter>
                                             </AlertDialogContent>
                                         </AlertDialog>
                                     </TableCell>

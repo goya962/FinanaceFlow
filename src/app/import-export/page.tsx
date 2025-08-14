@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { useToast } from "@/hooks/use-toast";
@@ -12,13 +11,14 @@ import { format, startOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import type { Income, Expense } from "@/types";
+import { getIncomes, getExpenses } from "@/lib/actions";
 
 export default function ImportExportPage() {
   const { toast } = useToast();
   const [startDate, setStartDate] = useState<Date | undefined>(startOfMonth(new Date()));
   const [endDate, setEndDate] = useState<Date | undefined>(new Date());
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!startDate || !endDate) {
       toast({
         title: "Fechas requeridas",
@@ -28,14 +28,11 @@ export default function ImportExportPage() {
       return;
     }
 
-    // In a real app, this would be fetched from a central store/context or Firestore
-    const storedIncomes: Income[] = JSON.parse(localStorage.getItem("incomes") || "[]");
-    const storedExpenses: Expense[] = JSON.parse(localStorage.getItem("expenses") || "[]");
+    const incomesData = await getIncomes();
+    const expensesData = await getExpenses();
     
-    // The date objects from local storage need to be parsed back into Date objects
-    const incomesWithDates = storedIncomes.map(i => ({...i, date: new Date(i.date)}));
-    const expensesWithDates = storedExpenses.map(e => ({...e, date: new Date(e.date)}));
-
+    const incomesWithDates = incomesData.map((i:any) => ({...i, date: new Date(i.date)}));
+    const expensesWithDates = expensesData.map((e:any) => ({...e, date: new Date(e.date)}));
 
     const filteredData = [
       ...incomesWithDates
@@ -93,7 +90,7 @@ export default function ImportExportPage() {
     if (file) {
       // In a real app, you would parse the CSV and send it to the server.
       console.log("Importing file:", file.name);
-      toast({ title: "Importación iniciada", description: `El archivo ${file.name} se está procesando.` });
+      toast({ title: "Funcionalidad no implementada", description: `La importación de archivos CSV se agregará en una futura actualización.` });
     }
   };
 

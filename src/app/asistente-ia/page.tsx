@@ -12,6 +12,7 @@ import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import type { Income, Expense } from "@/types";
 import { getFinancialAdvice } from "@/ai/flows/get-financial-advice";
+import { getIncomes, getExpenses } from "@/lib/actions";
 
 export default function AssistantPage() {
   const { toast } = useToast();
@@ -34,14 +35,14 @@ export default function AssistantPage() {
     setRecommendations("");
 
     try {
-      const storedIncomes: Income[] = JSON.parse(localStorage.getItem("incomes") || "[]");
-      const storedExpenses: Expense[] = JSON.parse(localStorage.getItem("expenses") || "[]");
+      const storedIncomes = await getIncomes();
+      const storedExpenses = await getExpenses();
 
-      const incomesWithDates = storedIncomes.map(i => ({...i, date: new Date(i.date)}));
-      const expensesWithDates = storedExpenses.map(e => ({...e, date: new Date(e.date)}));
+      const incomesWithDates = storedIncomes.map((i:any) => ({...i, date: new Date(i.date)}));
+      const expensesWithDates = storedExpenses.map((e:any) => ({...e, date: new Date(e.date)}));
 
-      const filteredIncomes = incomesWithDates.filter(item => item.date >= startDate && item.date <= endDate);
-      const filteredExpenses = expensesWithDates.filter(item => item.date >= startDate && item.date <= endDate);
+      const filteredIncomes = incomesWithDates.filter((item: Income) => item.date >= startDate && item.date <= endDate);
+      const filteredExpenses = expensesWithDates.filter((item: Expense) => item.date >= startDate && item.date <= endDate);
 
       if (filteredIncomes.length === 0 && filteredExpenses.length === 0) {
         toast({

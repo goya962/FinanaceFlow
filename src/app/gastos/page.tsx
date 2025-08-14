@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
@@ -34,8 +32,10 @@ import { cn } from "@/lib/utils";
 import { format, getMonth, getYear } from "date-fns";
 import { es } from "date-fns/locale";
 import type { Expense, Bank, CreditCard as CardType } from "@/types";
+import { getExpenses, saveExpense, deleteExpense, getBanks, getCards } from "@/lib/actions";
 
 const expenseSchema = z.object({
+  id: z.string().optional(),
   description: z.string().min(3, "La descripción es requerida."),
   amount: z.preprocess((a) => parseFloat(z.string().parse(a)), z.number().positive("El monto debe ser positivo.")),
   date: z.date({ required_error: "La fecha es requerida." }),
@@ -45,11 +45,6 @@ const expenseSchema = z.object({
   installments: z.preprocess((a) => parseInt(z.string().parse(a) || "1", 10), z.number().min(1).optional()),
   isSaving: z.boolean().default(false),
 });
-
-const mockExpenses: Expense[] = [
-    { id: '1', description: 'Supermercado', amount: 150, date: new Date(), paymentMethod: 'Débito', bank: 'Brubank' },
-    { id: '2', description: 'Cuota Gimnasio', amount: 50, date: new Date(), paymentMethod: 'Crédito', card: 'Visa', installments: 1 },
-];
 
 function GastosPageComponent() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -72,23 +67,17 @@ function GastosPageComponent() {
     }
     return new Date();
   });
+  
+  const fetchExpenses = async () => {
+    const fetchedExpenses = await getExpenses();
+    const expensesWithDates: Expense[] = fetchedExpenses.map((e: any) => ({ ...e, date: new Date(e.date) }));
+    setExpenses(expensesWithDates);
+  }
 
   useEffect(() => {
-    // In a real app, this would be fetched from a central store/context
-    const storedExpenses = localStorage.getItem("expenses");
-     const expensesWithDates: Expense[] = storedExpenses
-      ? JSON.parse(storedExpenses).map((e: Expense) => ({ ...e, date: new Date(e.date) }))
-      : mockExpenses.map(e => ({...e, date: new Date(e.date)}));
-    setExpenses(expensesWithDates);
-    
-    const storedBanks = localStorage.getItem("banks");
-    const storedCards = localStorage.getItem("cards");
-    
-    const initialBanks: Bank[] = [ { id: "0", name: "Ahorros", isDeletable: false }, { id: "1", name: "Ciudad" }, { id: "2", name: "Brubank" }, { id: "3", name: "ICBC" }];
-    const initialCards: CardType[] = [ { id: "1", name: "Visa", bank: "Ciudad" }, { id: "2", name: "Mastercard", bank: "ICBC" }];
-
-    setBanks(storedBanks ? JSON.parse(storedBanks) : initialBanks);
-    setCards(storedCards ? JSON.parse(storedCards) : initialCards);
+    fetchExpenses();
+    getBanks().then(setBanks);
+    getCards().then(setCards);
   }, []);
 
   useEffect(() => {
@@ -119,12 +108,12 @@ function GastosPageComponent() {
     if (editingExpense) {
       form.reset({
         ...editingExpense,
-        amount: editingExpense.amount,
         date: new Date(editingExpense.date),
         installments: editingExpense.installments || 1,
       });
     } else {
       form.reset({
+        id: undefined,
         description: "",
         amount: 0,
         date: new Date(),
@@ -135,51 +124,29 @@ function GastosPageComponent() {
         isSaving: false,
       });
     }
-  }, [editingExpense, form]);
+  }, [editingExpense, form, isDialogOpen]);
 
 
-  function onSubmit(values: z.infer<typeof expenseSchema>) {
-    if (editingExpense) {
-        const updatedExpenses = expenses.map(e => e.id === editingExpense.id ? { ...e, ...values, id: e.id, date: values.date } : e);
-        setExpenses(updatedExpenses);
-        localStorage.setItem("expenses", JSON.stringify(updatedExpenses));
-        toast({ title: "Gasto actualizado" });
+  async function onSubmit(values: z.infer<typeof expenseSchema>) {
+    const result = await saveExpense(values);
+    if(result.success) {
+      toast({ title: editingExpense ? "Gasto actualizado" : "Gasto agregado" });
+      fetchExpenses();
+      setDialogOpen(false);
+      setEditingExpense(null);
     } else {
-        let newExpenses: Expense[] = [];
-        if (values.paymentMethod === 'Crédito' && values.installments && values.installments > 1) {
-            for (let i = 0; i < values.installments; i++) {
-                const newDate = new Date(values.date);
-                newDate.setMonth(newDate.getMonth() + i);
-                const newExpense: Expense = {
-                    id: `${new Date().toISOString()}-${i}`,
-                    ...values,
-                    amount: values.amount / values.installments,
-                    date: newDate,
-                    description: `${values.description} (Cuota ${i+1}/${values.installments})`
-                };
-                newExpenses.push(newExpense);
-            }
-            toast({ title: `Gasto en ${values.installments} cuotas agregado!` });
-        } else {
-            const newExpense: Expense = { id: new Date().toISOString(), ...values };
-            newExpenses.push(newExpense);
-            toast({ title: "Gasto agregado exitosamente" });
-        }
-        const updated = [...expenses, ...newExpenses];
-        setExpenses(updated);
-        localStorage.setItem("expenses", JSON.stringify(updated));
+       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-    
-    form.reset();
-    setEditingExpense(null);
-    setDialogOpen(false);
   }
 
-  const handleDelete = (id: string) => {
-    const updatedExpenses = expenses.filter(e => e.id !== id);
-    setExpenses(updatedExpenses);
-    localStorage.setItem("expenses", JSON.stringify(updatedExpenses));
-    toast({ title: "Gasto eliminado", variant: "destructive" });
+  const handleDelete = async (id: string) => {
+    const result = await deleteExpense(id);
+    if (result.success) {
+        toast({ title: "Gasto eliminado", variant: "destructive" });
+        fetchExpenses();
+    } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
   };
 
   const handleEdit = (expense: Expense) => {
@@ -257,7 +224,7 @@ function GastosPageComponent() {
                         </Popover><FormMessage /></FormItem>
                     )} />
                     <FormField name="paymentMethod" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Método de Pago</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}><FormControl><SelectTrigger>
+                        <FormItem><FormLabel>Método de Pago</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger>
                             <SelectValue placeholder="Selecciona un método" /></SelectTrigger></FormControl>
                             <SelectContent>
                                 <SelectItem value="Débito">Débito</SelectItem>
@@ -310,7 +277,7 @@ function GastosPageComponent() {
                 <TableRow key={expense.id}>
                   <TableCell className="font-medium">{expense.description}</TableCell>
                   <TableCell>${expense.amount.toFixed(2)}</TableCell>
-                  <TableCell>{format(expense.date, "dd/MM/yyyy")}</TableCell>
+                  <TableCell>{format(new Date(expense.date), "dd/MM/yyyy")}</TableCell>
                   <TableCell>{expense.paymentMethod}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(expense)}><Edit className="h-4 w-4" /></Button>

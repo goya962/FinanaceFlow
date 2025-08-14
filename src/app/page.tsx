@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -28,18 +27,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TrendingUp, TrendingDown, PiggyBank, ArrowRight, Wallet } from "lucide-react";
-import { format, getMonth, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
+import { format, getMonth, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 import type { Expense, Income } from "@/types";
-
-const mockExpenses: Expense[] = [
-    { id: '1', description: 'Supermercado', amount: 150, date: new Date(), paymentMethod: 'Débito', bank: 'Brubank' },
-    { id: '2', description: 'Cuota Gimnasio', amount: 50, date: new Date(), paymentMethod: 'Crédito', card: 'Visa', installments: 1 },
-];
-const mockIncomes: Income[] = [
-    { id: '1', description: 'Salario', amount: 2500, date: new Date(), source: 'Ciudad' },
-    { id: '2', description: 'Venta online', amount: 200, date: new Date(), source: 'Mercado Pago' },
-];
+import { getExpenses, getIncomes } from "@/lib/actions";
 
 export default function Home() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -47,19 +38,16 @@ export default function Home() {
   const [selectedDate, setSelectedDate] = useState(new Date());
 
   useEffect(() => {
-    const storedExpenses = localStorage.getItem("expenses");
-    const storedIncomes = localStorage.getItem("incomes");
+    async function fetchData() {
+        const [fetchedExpenses, fetchedIncomes] = await Promise.all([getExpenses(), getIncomes()]);
+        
+        const expensesWithDates: Expense[] = fetchedExpenses.map((e: any) => ({ ...e, date: new Date(e.date) }));
+        const incomesWithDates: Income[] = fetchedIncomes.map((i: any) => ({ ...i, date: new Date(i.date) }));
 
-    const expensesWithDates: Expense[] = storedExpenses
-      ? JSON.parse(storedExpenses).map((e: Expense) => ({ ...e, date: new Date(e.date) }))
-      : mockExpenses.map(e => ({...e, date: new Date(e.date)}));
-      
-    const incomesWithDates: Income[] = storedIncomes
-      ? JSON.parse(storedIncomes).map((i: Income) => ({ ...i, date: new Date(i.date) }))
-      : mockIncomes.map(i => ({...i, date: new Date(i.date)}));
-
-    setExpenses(expensesWithDates);
-    setIncomes(incomesWithDates);
+        setExpenses(expensesWithDates);
+        setIncomes(incomesWithDates);
+    }
+    fetchData();
   }, []);
 
   const handleMonthChange = (monthValue: string) => {
@@ -100,7 +88,7 @@ export default function Home() {
     .filter(e => e.isSaving)
     .reduce((acc, e) => acc + e.amount, 0);
   const allTimeSavingsWithdrawals = expenses
-    .filter(e => e.bank === 'Ahorros')
+    .filter(e => e.bank === 'Ahorros') // Assuming 'Ahorros' is the designated savings account
     .reduce((acc, e) => acc + e.amount, 0);
   const cumulativeSavings = allTimeSavingsContributions - allTimeSavingsWithdrawals;
 

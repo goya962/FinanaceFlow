@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
@@ -33,18 +31,16 @@ import { cn } from "@/lib/utils";
 import { format, getMonth, getYear } from "date-fns";
 import { es } from "date-fns/locale";
 import type { Income, Bank, DigitalWallet } from "@/types";
+import { getIncomes, saveIncome, deleteIncome, getBanks, getWallets } from "@/lib/actions";
 
 const incomeSchema = z.object({
+  id: z.string().optional(),
   description: z.string().min(3, "La descripción es requerida."),
   amount: z.preprocess((a) => parseFloat(z.string().parse(a)), z.number().positive("El monto debe ser positivo.")),
   date: z.date({ required_error: "La fecha es requerida." }),
   source: z.string({ required_error: "El origen es requerido." }),
 });
 
-const mockIncomes: Income[] = [
-    { id: '1', description: 'Salario', amount: 2500, date: new Date(), source: 'Ciudad' },
-    { id: '2', description: 'Venta online', amount: 200, date: new Date(), source: 'Mercado Pago' },
-];
 
 function IngresosPageComponent() {
   const [incomes, setIncomes] = useState<Income[]>([]);
@@ -66,36 +62,27 @@ function IngresosPageComponent() {
     }
     return new Date();
   });
+  
+  const fetchIncomes = async () => {
+    const fetchedIncomes = await getIncomes();
+    const incomesWithDates: Income[] = fetchedIncomes.map((i: any) => ({ ...i, date: new Date(i.date) }));
+    setIncomes(incomesWithDates);
+  }
 
 
   useEffect(() => {
-    // In a real app, this would be fetched from a central store/context
-    const storedIncomes = localStorage.getItem("incomes");
-    const incomesWithDates: Income[] = storedIncomes
-      ? JSON.parse(storedIncomes).map((i: Income) => ({ ...i, date: new Date(i.date) }))
-      : mockIncomes.map(i => ({...i, date: new Date(i.date)}));
-    setIncomes(incomesWithDates);
-
-    const storedBanks = localStorage.getItem("banks");
-    const storedWallets = localStorage.getItem("wallets");
-
-    const initialBanks: Bank[] = [
-      { id: "1", name: "Ciudad" },
-      { id: "2", name: "Brubank" },
-      { id: "3", name: "ICBC" },
-    ];
-    const initialWallets: DigitalWallet[] = [
-      { id: "1", name: "Mercado Pago" },
-    ];
-
-    const banks: Bank[] = storedBanks ? JSON.parse(storedBanks) : initialBanks;
-    const wallets: DigitalWallet[] = storedWallets ? JSON.parse(storedWallets) : initialWallets;
-
-    const combinedSources = [
-      ...banks.map(b => ({ value: b.name, label: b.name })),
-      ...wallets.map(w => ({ value: w.name, label: w.name }))
-    ];
-    setSources(combinedSources);
+    fetchIncomes();
+    
+    async function fetchSources() {
+        const banks = await getBanks();
+        const wallets = await getWallets();
+        const combinedSources = [
+            ...banks.map(b => ({ value: b.name, label: `Banco: ${b.name}` })),
+            ...wallets.map(w => ({ value: w.name, label: `Billetera: ${w.name}` }))
+        ];
+        setSources(combinedSources);
+    }
+    fetchSources();
   }, []);
 
   useEffect(() => {
@@ -126,46 +113,38 @@ function IngresosPageComponent() {
       form.reset({
         ...editingIncome,
         date: new Date(editingIncome.date),
-        amount: editingIncome.amount,
       });
     } else {
       form.reset({
+        id: undefined,
         description: "",
         amount: 0,
         date: new Date(),
         source: ""
       });
     }
-  }, [editingIncome, form]);
+  }, [editingIncome, form, isDialogOpen]);
 
-  function onSubmit(values: z.infer<typeof incomeSchema>) {
-    if (editingIncome) {
-      // Update logic
-      const updatedIncomes = incomes.map((income) =>
-        income.id === editingIncome.id ? { ...income, ...values, id: income.id, date: values.date } : income
-      );
-      setIncomes(updatedIncomes);
-      localStorage.setItem("incomes", JSON.stringify(updatedIncomes));
-      toast({ title: "Ingreso actualizado", description: "El registro de ingreso ha sido actualizado." });
+  async function onSubmit(values: z.infer<typeof incomeSchema>) {
+    const result = await saveIncome(values);
+    if(result.success) {
+      toast({ title: editingIncome ? "Ingreso actualizado" : "Ingreso agregado" });
+      fetchIncomes();
+      setDialogOpen(false);
+      setEditingIncome(null);
     } else {
-      // Create logic
-      const newIncome: Income = { id: new Date().toISOString(), ...values };
-      const updatedIncomes = [...incomes, newIncome];
-      setIncomes(updatedIncomes);
-      localStorage.setItem("incomes", JSON.stringify(updatedIncomes));
-      toast({ title: "Ingreso agregado exitosamente" });
+      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-    
-    form.reset();
-    setEditingIncome(null);
-    setDialogOpen(false);
   }
 
-  function handleDelete(id: string) {
-    const updatedIncomes = incomes.filter(income => income.id !== id);
-    setIncomes(updatedIncomes);
-    localStorage.setItem("incomes", JSON.stringify(updatedIncomes));
-    toast({ title: "Ingreso eliminado", description: "El registro de ingreso ha sido eliminado.", variant: "destructive" });
+  async function handleDelete(id: string) {
+    const result = await deleteIncome(id);
+    if (result.success) {
+        toast({ title: "Ingreso eliminado", variant: "destructive" });
+        fetchIncomes();
+    } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
   }
   
   const handleEdit = (income: Income) => {
@@ -281,7 +260,7 @@ function IngresosPageComponent() {
                 <TableRow key={income.id}>
                   <TableCell className="font-medium">{income.description}</TableCell>
                   <TableCell>${income.amount.toFixed(2)}</TableCell>
-                  <TableCell>{format(income.date, "dd/MM/yyyy")}</TableCell>
+                  <TableCell>{format(new Date(income.date), "dd/MM/yyyy")}</TableCell>
                   <TableCell>{income.source}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(income)}><Edit className="h-4 w-4" /></Button>
@@ -320,4 +299,3 @@ export default function IngresosPage() {
     </Suspense>
   )
 }
-    

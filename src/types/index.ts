@@ -1,17 +1,17 @@
-
 export interface Account {
   id: string;
   name: string;
   currency: 'ARS' | 'USD';
   cbu?: string;
   alias?: string;
+  bankid?: string; // Foreign key
 }
 
 export interface Bank {
   id: string;
   name: string;
   accounts: Account[];
-  isDeletable?: boolean;
+  isdeletable?: boolean; // Matches postgres column name
 }
 
 export interface CreditCard {
@@ -31,7 +31,7 @@ export interface Expense {
   amount: number;
   date: Date;
   paymentMethod: 'Débito' | 'Crédito' | 'Efectivo' | 'Transferencia' | string;
-  bank?: string; // This will now refer to an Account's name/id
+  bank?: string;
   card?: string;
   installments?: number;
   isSaving?: boolean;
@@ -42,17 +42,10 @@ export interface Income {
   description: string;
   amount: number;
   date: Date;
-  source: string; // This will now refer to an Account's name/id
+  source: string;
 }
 
 export interface SavingsGoal {
   id: 'main'; // Singleton document
   percentage: number;
-}
-
-export interface MonthStatus {
-  id: string; // e.g., "2024-07"
-  year: number;
-  month: number;
-  status: 'open' | 'locked' | 'closed';
 }

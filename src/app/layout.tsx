@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { SidebarProvider } from '@/components/ui/sidebar';
 import AppSidebar from '@/components/AppSidebar';
 import { FirebaseProvider } from '@/lib/firebase';
+import { ThemeProvider } from '@/components/theme-provider';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -35,17 +36,24 @@ export default function RootLayout({
           inter.variable
         )}
       >
-        <FirebaseProvider>
-          <SidebarProvider>
-            <div className="flex">
-              <AppSidebar />
-              <main className="flex-1">
-                {children}
-              </main>
-            </div>
-          </SidebarProvider>
-        </FirebaseProvider>
-        <Toaster />
+        <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+        >
+          <FirebaseProvider>
+            <SidebarProvider>
+              <div className="flex">
+                <AppSidebar />
+                <main className="flex-1">
+                  {children}
+                </main>
+              </div>
+            </SidebarProvider>
+          </FirebaseProvider>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

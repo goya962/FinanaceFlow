@@ -9,7 +9,7 @@ import {
   PiggyBank,
   Landmark,
   Wallet,
-  FileUp,
+  Settings,
   Menu,
   Sparkles,
 } from "lucide-react";
@@ -34,8 +34,8 @@ const menuItems = [
   { href: "/bancos", label: "Bancos", icon: Landmark },
   { href: "/tarjetas", label: "Tarjetas", icon: CreditCard },
   { href: "/billeteras", label: "Billeteras", icon: Wallet },
-  { href: "/import-export", label: "Exp/Imp", icon: FileUp },
   { href: "/asistente-ia", label: "Asistente AI", icon: Sparkles },
+  { href: "/settings", label: "Ajustes", icon: Settings },
 ];
 
 export default function AppSidebar() {

@@ -1,4 +1,4 @@
-"use server";
+'use server';
 
 import pool from './db';
 import { z } from 'zod';
@@ -396,6 +396,20 @@ export async function saveSavingsGoal(percentage: number): Promise<{success: boo
     } catch (error) {
         console.error(error);
         return { message: 'Database Error: Failed to save savings goal.' };
+    } finally {
+        client.release();
+    }
+}
+
+// Settings Actions
+export async function checkDbConnection(): Promise<{ok: boolean}> {
+    const client = await pool.connect();
+    try {
+        await client.query('SELECT NOW()');
+        return { ok: true };
+    } catch (error) {
+        console.error("Database connection check failed:", error);
+        return { ok: false };
     } finally {
         client.release();
     }
